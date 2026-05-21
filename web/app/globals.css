@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #CC0033;
+  --primary-dark: #990025;
+  --accent-blue: #3B5BDB;
+  --accent-green: #2F9E44;
+  --bg-base: #F8F9FA;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #1A1B2E;
+  --text-primary: #1A1A2E;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+  --border: #E5E7EB;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --duration-base: 150ms;
+  --duration-slow: 300ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+}
