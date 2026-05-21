@@ -18,6 +18,13 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: pytest tests/ -v
+        env:
+          DISCORD_BOT_TOKEN: "dummy_token"
+          DISCORD_GUILD_ID: "123456789"
+          OPENAI_API_KEY: "sk-dummy"
+          AWS_ACCESS_KEY_ID: "dummy_key"
+          AWS_SECRET_ACCESS_KEY: "dummy_secret"
+          ADMIN_API_KEY: "dummy_admin"
 
   web-build:
     runs-on: ubuntu-latest
