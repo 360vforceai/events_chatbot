@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Allow `python discord_bot/bot.py` from the bot/ directory (README workflow).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -16,9 +22,19 @@ class SeerBot(commands.Bot):
 
     async def setup_hook(self):
         purge_interactions.start()
-        guild = discord.Object(id=int(settings.discord_guild_id))
+        guild_id = int(settings.discord_guild_id)
+        guild = discord.Object(id=guild_id)
         self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
+        try:
+            synced = await self.tree.sync(guild=guild)
+            logger.info("Synced %s slash command(s) to guild %s", len(synced), guild_id)
+        except discord.Forbidden:
+            logger.error(
+                "Slash command sync failed (403 Missing Access) for guild %s. "
+                "Invite the bot to that server with scopes bot + applications.commands, "
+                "then confirm DISCORD_GUILD_ID is the Server ID (not a channel ID).",
+                guild_id,
+            )
 
 client = SeerBot()
 
@@ -56,4 +72,11 @@ if __name__ == "__main__":
     if not token:
         logger.error("DISCORD_BOT_TOKEN is not set")
         exit(1)
-    client.run(token)
+    try:
+        client.run(token)
+    except discord.LoginFailure:
+        logger.error(
+            "Discord login failed. Reset the bot token in the Developer Portal "
+            "and update DISCORD_BOT_TOKEN in bot/.env (no spaces after =)."
+        )
+        raise

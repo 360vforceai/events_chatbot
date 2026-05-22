@@ -16,4 +16,6 @@ python discord_bot/bot.py
 cd web && npm install && npm run dev
 ```
 
-See `.env.example` for required environment variables.
+See `.env.example` for required environment variables (`bot/.env`).
+
+Required for the bot/API: `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `OPENAI_API_KEY`, `ADMIN_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`.
