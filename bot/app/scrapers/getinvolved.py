@@ -1,7 +1,7 @@
 import time
 import requests
 from bs4 import BeautifulSoup
-from app.db.client import get_dynamodb
+from app.db.client import get_supabase
 from app.config import settings
 from datetime import date
 
@@ -19,16 +19,16 @@ def scrape_clubs() -> list[dict]:
     return []
 
 
-def save_clubs_to_dynamo(clubs: list[dict]):
-    table = get_dynamodb().Table(settings.dynamodb_table_clubs)
+def save_clubs_to_supabase(clubs: list[dict]):
+    supabase = get_supabase()
     for club in clubs:
         club["last_updated"] = str(date.today())
-        table.put_item(Item=club)
+        supabase.table("clubs").upsert(club).execute()
 
 
 def run():
     clubs = scrape_clubs()
-    save_clubs_to_dynamo(clubs)
+    save_clubs_to_supabase(clubs)
     print(f"[scraper] Saved {len(clubs)} clubs")
 
 

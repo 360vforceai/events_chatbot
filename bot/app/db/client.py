@@ -1,16 +1,8 @@
-import boto3
+from supabase import create_client, Client
 from app.config import settings
-
-_dynamodb = None
-
-
-def get_dynamodb():
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource(
-            "dynamodb",
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-        )
-    return _dynamodb
+_supabase: Client = None
+def get_supabase() -> Client:
+    global _supabase
+    if _supabase is None:
+        _supabase = create_client(settings.supabase_url, settings.supabase_key)
+    return _supabase

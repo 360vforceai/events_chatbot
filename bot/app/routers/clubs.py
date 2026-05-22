@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.db.client import get_dynamodb
+from app.db.client import get_supabase
 from app.models.club import Club
 from app.config import settings
 
@@ -8,21 +8,21 @@ router = APIRouter()
 
 @router.get("/{club_id}", response_model=Club)
 def get_club(club_id: str):
-    db = get_dynamodb()
-    table = db.Table(settings.dynamodb_table_clubs)
-    result = table.get_item(Key={"club_id": club_id})
-    if "Item" not in result:
+    supabase = get_supabase()
+    response = supabase.table("clubs").select("*").eq("club_id", club_id).execute()
+    
+    if not response.data:
         raise HTTPException(status_code=404, detail="Club not found")
-    return result["Item"]
+    return response.data[0]
 
 
 @router.get("/", response_model=list[Club])
 def list_clubs(campus: str = None, category: str = None):
-    db = get_dynamodb()
-    table = db.Table(settings.dynamodb_table_clubs)
-    # TODO: add GSI filtering by campus / category in Phase 2
-    result = table.scan()
-    items = result.get("Items", [])
+    supabase = get_supabase()
+    query = supabase.table("clubs").select("*")
+    
     if campus:
-        items = [i for i in items if i.get("campus") == campus]
-    return items
+        query = query.eq("campus", campus)
+        
+    response = query.execute()
+    return response.data
