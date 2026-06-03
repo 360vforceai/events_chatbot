@@ -50,6 +50,14 @@ def _event_item_to_dict(item: dict) -> dict | None:
     }
 
 
+def _valid_event_year(event: dict) -> bool:
+    try:
+        year = int(str(event.get("date", ""))[:4])
+        return 2020 <= year <= 2035
+    except (TypeError, ValueError):
+        return False
+
+
 def _is_upcoming(event: dict) -> bool:
     starts = event.get("_starts_on")
     if starts:
@@ -77,8 +85,9 @@ def _fetch_events_from_api(
     order_direction: str = "ascending",
     max_results: int = 100,
     upcoming_only: bool = False,
+    starts_after: str | None = None,
 ) -> list[dict]:
-    PAGE_SIZE = min(100, max_results)
+    PAGE_SIZE = min(100, max(max_results, 25))
     events: list[dict] = []
     skip = 0
 
@@ -92,6 +101,8 @@ def _fetch_events_from_api(
                 "skip": skip,
                 "query": query.strip(),
             }
+            if starts_after:
+                params["startsAfter"] = starts_after
             response = requests.get(EVENTS_API, headers=HEADERS, params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
@@ -99,15 +110,30 @@ def _fetch_events_from_api(
             if not page:
                 break
 
+            page_added = 0
             for item in page:
                 parsed = _event_item_to_dict(item)
                 if not parsed:
                     continue
+                if not _valid_event_year(parsed):
+                    continue
                 if upcoming_only and not _is_upcoming(parsed):
                     continue
                 events.append(parsed)
+                page_added += 1
                 if len(events) >= max_results:
                     break
+
+            if len(events) >= max_results:
+                break
+            # Descending: once we hit a page of only past events, the remainder is history.
+            if (
+                page
+                and upcoming_only
+                and order_direction == "descending"
+                and page_added == 0
+            ):
+                break
 
             skip += PAGE_SIZE
             total = data.get("@odata.count", 0)
@@ -124,22 +150,28 @@ def search_getinvolved_events(query: str, max_results: int = 25) -> list[dict]:
     """Live event search from getINVOLVED (real-time)."""
     if not query or not query.strip():
         return fetch_upcoming_events(max_results=max_results)
-    return _fetch_events_from_api(
+    raw = _fetch_events_from_api(
         query=query,
-        order_direction="ascending",
-        max_results=max_results,
+        order_direction="descending",
+        max_results=max(80, max_results * 4),
         upcoming_only=True,
     )
+    raw.sort(key=lambda e: (e.get("date", ""), e.get("time", "")))
+    return raw[:max_results]
 
 
-def fetch_upcoming_events(max_results: int = 60) -> list[dict]:
-    """Upcoming approved events, soonest first."""
-    return _fetch_events_from_api(
+def fetch_upcoming_events(max_results: int = 80) -> list[dict]:
+    """Upcoming Rutgers campus events — soonest first."""
+    today = date.today().isoformat()
+    raw = _fetch_events_from_api(
         query="",
         order_direction="ascending",
-        max_results=max_results,
+        max_results=min(120, max(max_results * 2, 40)),
         upcoming_only=True,
+        starts_after=today,
     )
+    raw.sort(key=lambda e: (e.get("date", ""), e.get("time", "")))
+    return raw[:max_results]
 
 
 def fetch_getinvolved_events() -> list:
@@ -196,8 +228,10 @@ def save_events_to_supabase(events: list):
         return
     try:
         supabase = get_supabase()
-        for event in events:
-            supabase.table("events").upsert(event).execute()
+        batch_size = 50
+        for i in range(0, len(events), batch_size):
+            chunk = events[i : i + batch_size]
+            supabase.table("events").upsert(chunk).execute()
         logger.info(f"Saved {len(events)} events from GetInvolved to Supabase.")
     except Exception as e:
         logger.error(f"Failed to save GetInvolved events: {e}")

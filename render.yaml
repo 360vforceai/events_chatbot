@@ -18,6 +18,8 @@ envVarGroups:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: TICKETMASTER_API_KEY
+        sync: false
 
 services:
   # Required: always-on Discord bot (same role as bot/railway.toml startCommand)

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     live_events_cache_minutes: int = 10
     discord_updates_channel_id: str = ""
     discord_announce_new_events: bool = True
+    ticketmaster_api_key: str = ""
 
     # Legacy — unused by Supabase-backed code; kept for backward-compatible .env files
     aws_access_key_id: str = "local"

@@ -156,6 +156,7 @@ async def find_cheap_tickets(
 ) -> str:
     """Cheap-ticket search for a category (sports, concert, comedy, etc.)."""
     search_query = _resolve_search_query(category, search)
+    live_block = await _format_live_tri_state_block(category)
     try:
         data = await get_tri_state_recommendations(
             mode="tickets",
@@ -166,16 +167,37 @@ async def find_cheap_tickets(
             rutgers_events_context="",
             search_query=search_query,
         )
-        return format_tri_state_response(data, category=category, search_query=search_query)
+        body = format_tri_state_response(data, category=category, search_query=search_query)
+        return f"{live_block}\n\n{body}" if live_block else body
     except Exception as e:
         logger.error(f"find_cheap_tickets AI fallback: {e}")
         budget_line = f"\nBudget: {budget}" if budget else ""
-        return (
+        base = (
             f"**Tri-state cheap tickets** — _{EVENT_CATEGORIES.get(category, category)}_{budget_line}\n"
             f"_{TRI_STATE_NOTE}_\n\n"
             f"{format_purchase_links_block(search_query, heading='Compare & buy tickets')}\n\n"
             "_AI suggestions are temporarily unavailable — use the links above to shop._"
         )
+        return f"{live_block}\n\n{base}" if live_block else base
+
+
+async def _format_live_tri_state_block(category: str) -> str:
+    from app.services.live_events_cache import search_tri_state_live, tri_state_freshness_label
+
+    events = await search_tri_state_live(category=category, max_results=6)
+    if not events:
+        hint = tri_state_freshness_label()
+        if "TICKETMASTER" in hint:
+            return f"_{hint}_"
+        return ""
+    lines = [f"**Live listings** _({tri_state_freshness_label()})_", ""]
+    for e in events[:6]:
+        url = e.get("rsvp_link", "")
+        link = f" [Tickets]({url})" if url else ""
+        lines.append(
+            f"• **{e.get('title')}** — {e.get('date')} @ {e.get('campus', '')}{link}"
+        )
+    return "\n".join(lines)
 
 
 def format_ask_tri_state_response(data: dict) -> str:
@@ -242,12 +264,16 @@ async def explore_events_by_interests(
             rutgers_events_context=rutgers_events_context,
             search_query=search_query,
         )
-        return format_tri_state_response(data, category=cat, search_query=search_query)
+        body = format_tri_state_response(data, category=cat, search_query=search_query)
+        live_block = await _format_live_tri_state_block(cat)
+        return f"{live_block}\n\n{body}" if live_block else body
     except Exception as e:
         logger.error(f"explore_events AI fallback: {e}")
-        return (
+        live_block = await _format_live_tri_state_block(cat)
+        base = (
             f"**Events for you** — interests: _{interests}_\n"
             f"_{TRI_STATE_NOTE}_\n\n"
             f"{format_purchase_links_block(search_query, heading='Browse tickets')}\n\n"
             "_AI picks are temporarily unavailable — try the links above._"
         )
+        return f"{live_block}\n\n{base}" if live_block else base

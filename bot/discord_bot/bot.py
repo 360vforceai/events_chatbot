@@ -186,7 +186,7 @@ async def ask_date_cmd(interaction: discord.Interaction, question: str):
 
 @client.tree.command(
     name="whats_new",
-    description="Upcoming Rutgers events in the next 7 days (live from getINVOLVED)",
+    description="Next 7 days: Rutgers events + live tri-state concerts & sports",
 )
 async def whats_new_cmd(interaction: discord.Interaction):
     await handle_interaction(interaction)

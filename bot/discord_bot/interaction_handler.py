@@ -16,6 +16,7 @@ from app.services.events_client import (
     find_club_by_name,
     format_instagram_message,
     format_whats_new,
+    merge_campus_whats_new,
 )
 from app.services import live_events_cache
 from app.services.club_search import expand_search_terms
@@ -241,18 +242,31 @@ async def handle_explore_events(interaction: discord.Interaction, user_id: str, 
     budget = getattr(interaction.namespace, "budget", None)
 
     rutgers_ctx = ""
+    tri_ctx = ""
     try:
-        campus_events = await search_events(interests)
+        campus_events, tri_events = await asyncio.gather(
+            search_events(interests),
+            live_events_cache.search_tri_state_live(category=category or "all", max_results=8),
+        )
         if campus_events:
             rutgers_ctx = format_events_context(campus_events)
+        if tri_events:
+            lines = ["Live tri-state listings (Ticketmaster):"]
+            for e in tri_events[:6]:
+                lines.append(
+                    f"- {e.get('title')} on {e.get('date')} @ {e.get('campus')} "
+                    f"[tickets]({e.get('rsvp_link')})"
+                )
+            tri_ctx = "\n".join(lines)
     except Exception as e:
-        logger.warning(f"Rutgers events context skipped: {e}")
+        logger.warning(f"Events context skipped: {e}")
 
+    combined_ctx = "\n\n".join(filter(None, [rutgers_ctx, tri_ctx]))
     content = await explore_events_by_interests(
         interests=interests,
         category=category,
         budget=budget,
-        rutgers_events_context=rutgers_ctx,
+        rutgers_events_context=combined_ctx,
     )
     await send_chunks(interaction, content)
     logger.info(f"Handled /explore_events userId={user_id} interests={interests[:80]}")
@@ -295,13 +309,22 @@ async def handle_ask_date(interaction: discord.Interaction, user_id: str, userna
     asyncio.create_task(save_memory_async(user_id, username, question, content, None))
     logger.info(f"Handled /ask_date userId={user_id} len={len(question)}")
 
-# /whats_new — live upcoming events (next 7 days)
+# /whats_new — live upcoming campus + tri-state events (next 7 days)
 async def handle_whats_new(interaction: discord.Interaction, user_id: str, username: str):
-    await live_events_cache.refresh()
-    upcoming = live_events_cache.events_within_days(7)
-    content = format_whats_new(upcoming)
+    await asyncio.gather(
+        live_events_cache.refresh_campus(),
+        live_events_cache.refresh_tri_state(),
+    )
+    campus_live = live_events_cache.campus_within_days(7)
+    campus = await merge_campus_whats_new(campus_live, days=7)
+    tri = live_events_cache.tri_state_within_days(7)
+    if not tri:
+        tri = live_events_cache.get_upcoming_tri_state()[:10]
+    content = format_whats_new(campus, tri, days=7)
     await send_chunks(interaction, content)
-    logger.info(f"Handled /whats_new userId={user_id} count={len(upcoming)}")
+    logger.info(
+        f"Handled /whats_new userId={user_id} campus={len(campus)} tri_state={len(tri)}"
+    )
 
 # /help
 async def handle_help(interaction: discord.Interaction):
@@ -311,7 +334,7 @@ async def handle_help(interaction: discord.Interaction):
         "`/discover <major> <interests> <goals>` — Get personalized club recommendations.\n"
         "`/search <query>` — Look up a specific club or event.\n"
         "`/events <target>` — Check upcoming events for a campus or club (live + database).\n"
-        "`/whats_new` — Events in the next 7 days, refreshed from getINVOLVED.\n"
+        "`/whats_new` — Next 7 days: Rutgers events + live tri-state concerts/sports (Ticketmaster).\n"
         "`/instagram <club>` — Get a club's Instagram and getINVOLVED links.\n\n"
         "**Tri-state tickets & shows (NY / NJ / PA)**\n"
         "`/tickets <category> [search] [budget]` — Cheap tickets for sports, concerts, comedy, theater, festivals.\n"

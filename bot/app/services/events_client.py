@@ -251,25 +251,84 @@ def format_events_context(results: list) -> str:
     return "\n".join(lines)
 
 
-def format_whats_new(events: list) -> str:
-    if not events:
-        return (
-            "**Nothing on the calendar** for the next 7 days in our live feed.\n"
-            f"_{live_events_cache.freshness_label()} · {data_sync.freshness_label()}_\n"
-            "Try `/events` with a club name or `/ask` for broader help."
-        )
+def _format_event_line(event: dict, *, link_label: str = "RSVP") -> str:
+    free_food = " 🍕" if event.get("free_food") else ""
+    url = event.get("rsvp_link", "")
+    link = f" · [{link_label}]({url})" if url else ""
+    price = f" · _{event['price_tip']}_" if event.get("price_tip") else ""
+    cat = f" · _{event['category']}_" if event.get("category") else ""
+    area = event.get("campus") or event.get("location", "TBD")
     lines = [
-        "**Upcoming this week** (live getINVOLVED)",
-        f"_{live_events_cache.freshness_label()} · {data_sync.freshness_label()}_\n",
+        f"• **{event.get('title')}** — {event.get('date')} {event.get('time', '')} @ {area}{link}{price}{cat}{free_food}"
     ]
-    for event in events[:12]:
-        free_food = " 🍕" if event.get("free_food") else ""
-        rsvp = event.get("rsvp_link", "")
-        link = f" · [RSVP]({rsvp})" if rsvp else ""
-        lines.append(
-            f"• **{event.get('title')}** — {event.get('date')} {event.get('time', '')} "
-            f"@ {event.get('location', 'TBD')}{link}{free_food}"
+    if event.get("club_name"):
+        lines.append(f"  _{event['club_name']}_")
+    vendors = event.get("ticket_links") or []
+    if vendors:
+        top = vendors[0]
+        lines.append(f"  [Tickets — {top['label']}]({top['url']})")
+    return "\n".join(lines)
+
+
+async def merge_campus_whats_new(live: list[dict], days: int = 7) -> list[dict]:
+    """Prefer live getINVOLVED; fill gaps from Supabase for the same window."""
+    from datetime import date, timedelta
+
+    merged = list(live)
+    seen = {e.get("event_id") or f"{e.get('title')}|{e.get('date')}" for e in merged}
+    cutoff = date.today()
+    end = cutoff + timedelta(days=days)
+    try:
+        supabase = get_supabase()
+        rows = (
+            supabase.table("events")
+            .select("*")
+            .gte("date", cutoff.isoformat())
+            .lte("date", end.isoformat())
+            .order("date")
+            .limit(15)
+            .execute()
+            .data
+            or []
         )
-        if event.get("club_name"):
-            lines.append(f"  _{event['club_name']}_")
+        for row in rows:
+            key = row.get("event_id") or f"{row.get('title')}|{row.get('date')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(row)
+        merged.sort(key=lambda e: (e.get("date", ""), e.get("time", "")))
+    except Exception as e:
+        logger.warning("Supabase whats_new merge failed: %s", e)
+    return merged[:12]
+
+
+def format_whats_new(campus_events: list, tri_state_events: list, days: int = 7) -> str:
+    lines = [
+        f"**What's new — next {days} days**",
+        f"_{live_events_cache.freshness_label()} · {live_events_cache.tri_state_freshness_label()} · {data_sync.freshness_label()}_\n",
+    ]
+
+    if campus_events:
+        lines.append("**Rutgers campus (getINVOLVED + database)**")
+        for event in campus_events[:10]:
+            lines.append(_format_event_line(event))
+    else:
+        lines.append("**Rutgers campus** — no events in this window. Try `/events` with a club name.")
+
+    lines.append("")
+    if tri_state_events:
+        lines.append("**Tri-state — concerts, sports & shows (Ticketmaster)**")
+        for event in tri_state_events[:10]:
+            lines.append(_format_event_line(event, link_label="Tickets"))
+    else:
+        lines.append(
+            "**Tri-state** — no live listings in this window. "
+            "Add `TICKETMASTER_API_KEY` to `bot/.env` (free at developer.ticketmaster.com), "
+            "or use `/tickets` and `/explore_events`."
+        )
+
+    if not campus_events and not tri_state_events:
+        lines.append("\nTry `/tickets` or `/explore_events` for tri-state ideas with buy links.")
+
     return "\n".join(lines)
