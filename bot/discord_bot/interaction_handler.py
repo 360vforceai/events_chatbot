@@ -24,6 +24,7 @@ from app.services.ticket_service import (
     find_cheap_tickets,
     explore_events_by_interests,
     ask_tri_state_question,
+    compare_ticket_prices,
 )
 from app.services.date_ideas_service import ask_about_first_dates, discover_first_date_ideas
 from discord_bot.coach_handler import (
@@ -227,6 +228,18 @@ async def handle_instagram(interaction: discord.Interaction, user_id: str, usern
     await send_chunks(interaction, format_instagram_message(club))
     logger.info(f"Handled /instagram userId={user_id} club={club.get('name')}")
 
+# /compare_prices — cheapest tri-state tickets across marketplaces
+async def handle_compare_prices(interaction: discord.Interaction, user_id: str, username: str):
+    search = getattr(interaction.namespace, "search", None)
+    if not search or not search.strip():
+        await interaction.followup.send("Enter a team, artist, or event to compare prices.", ephemeral=True)
+        return
+    category = _slash_choice_value(getattr(interaction.namespace, "category", None)) or "all"
+    budget = getattr(interaction.namespace, "budget", None)
+    content = await compare_ticket_prices(search=search.strip(), category=category, budget=budget)
+    await send_chunks(interaction, content)
+    logger.info(f"Handled /compare_prices userId={user_id} search={search[:60]}")
+
 # /tickets — cheap tri-state tickets (sports, concerts, comedy, etc.)
 async def handle_tickets(interaction: discord.Interaction, user_id: str, username: str):
     category = _slash_choice_value(getattr(interaction.namespace, "category", None)) or "all"
@@ -370,16 +383,18 @@ async def handle_help(interaction: discord.Interaction):
         "`/whats_new` — Next 7 days: Rutgers events + live tri-state concerts/sports (Ticketmaster).\n"
         "`/instagram <club>` — Get a club's Instagram and getINVOLVED links.\n\n"
         "**Tri-state tickets & shows (NY / NJ / PA)**\n"
+        "`/compare_prices <search> [category] [budget]` — Cheapest listings + links to SeatGeek, Gametime, StubHub, TM, etc.\n"
         "`/tickets <category> [search] [budget]` — Cheap tickets for sports, concerts, comedy, theater, festivals.\n"
         "`/explore_events <interests> [category] [budget]` — Discover events from your interests + buy links.\n"
         "`/ask_tickets <question>` — Ask anything; develop your interests in concerts, sports, comedy, etc.\n\n"
         "**Date Ideas**\n"
         "`/date_ideas <vibe> [interests] [budget]` — Curated date ideas with Maps/Yelp/OpenTable links.\n"
         "`/ask_date <question>` — Ask about plans, budget, vibe, or what to do.\n\n"
-        "**Coach sessions (multi-turn — like a chat thread)**\n"
+        "**Coach sessions (saved memory, 15 min idle timeout)**\n"
         "`/find <goal>` — Start a session; the agent asks follow-ups and narrows to **one pick**.\n"
-        "  _Reply in the thread it creates, or use `/continue <message>`._\n"
-        "`/session` — See your active session.\n"
+        "  _Reply in the thread, or `/continue <message>`. Memory persists across bot restarts._\n"
+        "`/continue <message>` — Keep going (resumes if the session went idle).\n"
+        "`/session` — Status + time until auto-close.\n"
         "`/end_session` — Close the session.\n\n"
         "`/help` — Show this message.\n\n"
         "Campus events refresh automatically from getINVOLVED (live API + background sync).\n"
@@ -401,7 +416,7 @@ async def handle_interaction(interaction: discord.Interaction):
     command_name = interaction.command.name if interaction.command else None
     valid_commands = [
         'ask', 'discover', 'search', 'events', 'instagram',
-        'tickets', 'explore_events', 'ask_tickets',
+        'tickets', 'compare_prices', 'explore_events', 'ask_tickets',
         'date_ideas', 'ask_date', 'whats_new',
         'find', 'continue', 'session', 'end_session', 'help',
     ]
@@ -452,6 +467,8 @@ async def handle_interaction(interaction: discord.Interaction):
             await handle_instagram(interaction, user_id, username)
         elif command_name == 'tickets':
             await handle_tickets(interaction, user_id, username)
+        elif command_name == 'compare_prices':
+            await handle_compare_prices(interaction, user_id, username)
         elif command_name == 'explore_events':
             await handle_explore_events(interaction, user_id, username)
         elif command_name == 'ask_tickets':

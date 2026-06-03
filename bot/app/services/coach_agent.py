@@ -6,12 +6,14 @@ import asyncio
 import logging
 
 from app.services.ai_client import get_coach_agent_response
+from app.services.coach_session_models import CoachSession
 from app.services.coach_session_service import (
     MAX_TURNS,
-    CoachSession,
     end_session,
     mark_resolved,
+    save_turn,
 )
+from app.services.ticket_price_compare import format_cheapest_tri_state_report
 from app.services.events_client import (
     format_clubs_context,
     format_events_context,
@@ -46,19 +48,28 @@ async def _gather_context(session: CoachSession, latest_message: str) -> dict:
 
     async def tri_state():
         if domain not in ("tri_state", "general"):
-            return ""
+            return "", ""
         events = await live_events_cache.search_tri_state_live(category="all", max_results=8)
-        if not events:
-            return live_events_cache.tri_state_freshness_label()
-        lines = [f"Live tri-state listings ({live_events_cache.tri_state_freshness_label()}):"]
-        for e in events[:8]:
-            lines.append(
+        live_lines = ""
+        if events:
+            live_lines = "Live tri-state listings:\n" + "\n".join(
                 f"- {e.get('title')} on {e.get('date')} @ {e.get('campus')} "
-                f"[tickets]({e.get('rsvp_link')})"
+                f"${e.get('price_tip', 'price TBD')} [tickets]({e.get('rsvp_link')})"
+                for e in events[:8]
             )
-        return "\n".join(lines)
+        else:
+            live_lines = live_events_cache.tri_state_freshness_label()
 
-    (clubs_ctx, events_ctx), tri_ctx = await asyncio.gather(campus(), tri_state())
+        price_report = await asyncio.to_thread(
+            format_cheapest_tri_state_report,
+            keyword=keywords[:80],
+            category="all",
+            limit=5,
+        )
+        return live_lines, price_report
+
+    (clubs_ctx, events_ctx), (tri_live, tri_prices) = await asyncio.gather(campus(), tri_state())
+    tri_ctx = "\n\n".join(filter(None, [tri_live, tri_prices]))
     return {
         "clubs_context": clubs_ctx,
         "events_context": events_ctx,
@@ -166,6 +177,7 @@ async def run_coach_turn(session: CoachSession, user_message: str) -> str:
 
     reply = format_coach_reply(data, session)
     session.add_message("assistant", reply)
+    save_turn(session)
 
     if data.get("status") == "resolved":
         mark_resolved(session.user_id)

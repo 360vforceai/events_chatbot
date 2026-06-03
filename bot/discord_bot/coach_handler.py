@@ -7,11 +7,13 @@ import logging
 import discord
 
 from app.services.coach_agent import run_coach_turn, start_coach_session
+from app.config import settings
 from app.services.coach_session_service import (
     attach_thread,
     end_session,
     get_session,
     get_session_by_thread,
+    resume_session,
     session_status_text,
     start_session,
 )
@@ -65,6 +67,10 @@ async def handle_continue(
     message: str,
 ):
     session = get_session(user_id)
+    resumed = False
+    if not session:
+        session = resume_session(user_id)
+        resumed = session is not None
     if not session:
         await interaction.followup.send(
             "No active session. Start one with `/find <goal>` — e.g. "
@@ -74,6 +80,11 @@ async def handle_continue(
         return
 
     reply = await run_coach_turn(session, message)
+    if resumed:
+        reply = (
+            f"_Resumed your saved session (goal: {session.goal}). "
+            f"Auto-ends after {settings.coach_session_idle_minutes} min idle._\n\n{reply}"
+        )
     await interaction.edit_original_response(content=reply[:2000])
     for chunk in split_message(reply)[1:]:
         await interaction.followup.send(chunk)
@@ -110,6 +121,25 @@ async def handle_end_session(interaction: discord.Interaction, user_id: str):
     logger.info("Coach session ended userId=%s", user_id)
 
 
+async def notify_session_idle_ended(session, client: discord.Client):
+    if not session.thread_id:
+        return
+    channel = client.get_channel(session.thread_id)
+    if channel is None:
+        try:
+            channel = await client.fetch_channel(session.thread_id)
+        except Exception:
+            return
+    try:
+        mins = settings.coach_session_idle_minutes
+        await channel.send(
+            f"⏱️ Session paused after **{mins} minutes** with no messages. "
+            f"Your chat is saved — use `/continue <message>` to pick up, or `/find` for a new goal."
+        )
+    except Exception as e:
+        logger.warning("Idle session notify failed: %s", e)
+
+
 async def handle_coach_thread_message(message: discord.Message) -> bool:
     """Returns True if the message was handled as a coach turn."""
     if message.author.bot or not isinstance(message.channel, discord.Thread):
@@ -117,7 +147,11 @@ async def handle_coach_thread_message(message: discord.Message) -> bool:
 
     session = get_session_by_thread(message.channel.id)
     if not session:
-        return False
+        session = resume_session(str(message.author.id))
+        if session and session.thread_id == message.channel.id:
+            pass
+        else:
+            return False
     if str(message.author.id) != session.user_id:
         return False
     if not message.content or not message.content.strip():

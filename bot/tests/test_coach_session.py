@@ -5,8 +5,20 @@ from app.services.coach_session_service import (
     end_session,
     get_session,
     get_session_by_thread,
+    idle_seconds,
+    is_idle_expired,
     start_session,
 )
+
+
+def test_idle_timeout_default():
+    assert idle_seconds() == 15 * 60
+
+
+def test_idle_expired():
+    session = start_session(user_id="u_idle", username="x", goal="concert")
+    session.updated_at -= 16 * 60
+    assert is_idle_expired(session) is True
 
 
 def test_detect_domain_tri_state():
@@ -27,7 +39,7 @@ def test_session_lifecycle():
     assert session.domain == "tri_state"
     attach_thread("u1", 999, 111)
     assert get_session_by_thread(999) is session
-    ended = end_session("u1")
+    ended = end_session("u1", reason="user")
     assert ended is not None
     assert get_session("u1") is None
 

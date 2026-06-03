@@ -11,8 +11,10 @@ from discord.ext import tasks
 
 from app.config import settings
 from app.services import data_sync, live_events_cache
+from app.services.coach_session_service import collect_idle_sessions, end_session
 from app.scrapers.getinvolved import fetch_upcoming_events
 from discord_bot import club_cache
+from discord_bot.coach_handler import notify_session_idle_ended
 
 logger = logging.getLogger("discord_bot")
 
@@ -35,6 +37,16 @@ async def periodic_data_sync():
 @tasks.loop(minutes=10)
 async def periodic_live_events_refresh():
     await live_events_cache.refresh()
+
+
+@tasks.loop(minutes=1)
+async def periodic_coach_idle_check():
+    if not _bot_client:
+        return
+    for session in collect_idle_sessions():
+        end_session(session.user_id, reason="idle")
+        await notify_session_idle_ended(session, _bot_client)
+        logger.info("Coach session idle-ended userId=%s", session.user_id)
 
 
 async def _run_sync_and_notify():
@@ -122,11 +134,14 @@ def start_background_tasks(client: discord.Client):
         periodic_data_sync.start()
     if not periodic_live_events_refresh.is_running():
         periodic_live_events_refresh.start()
+    if not periodic_coach_idle_check.is_running():
+        periodic_coach_idle_check.start()
 
     logger.info(
-        "Background tasks started (sync every %s min, live cache every %s min)",
+        "Background tasks started (sync every %s min, live cache every %s min, coach idle %s min)",
         _sync_interval_minutes(),
         settings.live_events_cache_minutes,
+        settings.coach_session_idle_minutes,
     )
 
 

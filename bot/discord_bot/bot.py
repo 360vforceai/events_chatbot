@@ -237,6 +237,25 @@ async def session_cmd(interaction: discord.Interaction):
 async def end_session_cmd(interaction: discord.Interaction):
     await handle_interaction(interaction)
 
+
+@client.tree.command(
+    name="compare_prices",
+    description="Find cheapest tri-state tickets (comedy to NBA) across all major sellers",
+)
+@app_commands.describe(
+    search="Team, artist, or event — e.g. NBA Finals, comedy Newark, Taylor Swift",
+    category="Optional: sports, concert, comedy, theater",
+    budget="Optional — e.g. under 75",
+)
+@app_commands.choices(category=TICKET_CATEGORY_CHOICES)
+async def compare_prices_cmd(
+    interaction: discord.Interaction,
+    search: str,
+    category: app_commands.Choice[str] | None = None,
+    budget: str | None = None,
+):
+    await handle_interaction(interaction)
+
 if __name__ == "__main__":
     token = settings.discord_bot_token
     if not token:

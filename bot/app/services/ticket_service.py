@@ -155,7 +155,18 @@ async def find_cheap_tickets(
     budget: str | None = None,
 ) -> str:
     """Cheap-ticket search for a category (sports, concert, comedy, etc.)."""
+    import asyncio
+
+    from app.services.ticket_price_compare import format_cheapest_tri_state_report
+
     search_query = _resolve_search_query(category, search)
+    price_block = await asyncio.to_thread(
+        format_cheapest_tri_state_report,
+        keyword=search or "",
+        category=category,
+        budget=budget,
+        limit=6,
+    )
     live_block = await _format_live_tri_state_block(category)
     try:
         data = await get_tri_state_recommendations(
@@ -168,7 +179,8 @@ async def find_cheap_tickets(
             search_query=search_query,
         )
         body = format_tri_state_response(data, category=category, search_query=search_query)
-        return f"{live_block}\n\n{body}" if live_block else body
+        parts = [p for p in [price_block, live_block, body] if p]
+        return "\n\n".join(parts)
     except Exception as e:
         logger.error(f"find_cheap_tickets AI fallback: {e}")
         budget_line = f"\nBudget: {budget}" if budget else ""
@@ -178,7 +190,27 @@ async def find_cheap_tickets(
             f"{format_purchase_links_block(search_query, heading='Compare & buy tickets')}\n\n"
             "_AI suggestions are temporarily unavailable — use the links above to shop._"
         )
-        return f"{live_block}\n\n{base}" if live_block else base
+        parts = [p for p in [price_block, live_block, base] if p]
+        return "\n\n".join(parts)
+
+
+async def compare_ticket_prices(
+    search: str,
+    category: str = "all",
+    budget: str | None = None,
+) -> str:
+    """Cheapest-first tri-state listings with links to every major ticket site."""
+    import asyncio
+
+    from app.services.ticket_price_compare import format_cheapest_tri_state_report
+
+    return await asyncio.to_thread(
+        format_cheapest_tri_state_report,
+        keyword=search,
+        category=category,
+        budget=budget,
+        limit=10,
+    )
 
 
 async def _format_live_tri_state_block(category: str) -> str:
