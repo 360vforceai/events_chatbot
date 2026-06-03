@@ -28,6 +28,15 @@ DATE_VIBE_CHOICES = [
     for key, label in DATE_VIBES.items()
 ]
 
+START_TOPIC_CHOICES = [
+    app_commands.Choice(name="Help me pick one thing (coach)", value="coach"),
+    app_commands.Choice(name="Rutgers clubs", value="campus_clubs"),
+    app_commands.Choice(name="Rutgers campus events", value="campus_events"),
+    app_commands.Choice(name="Tri-state tickets & shows", value="tri_state"),
+    app_commands.Choice(name="Date ideas", value="date_ideas"),
+    app_commands.Choice(name="Browse what's new", value="browse"),
+]
+
 
 async def club_autocomplete(
     interaction: discord.Interaction,
@@ -205,6 +214,25 @@ async def whats_new_cmd(interaction: discord.Interaction):
 
 @client.tree.command(name="help", description="Show all available commands")
 async def help_cmd(interaction: discord.Interaction):
+    await handle_interaction(interaction)
+
+
+@client.tree.command(
+    name="start",
+    description="Get pointed to the right commands — or start a coach session",
+)
+@app_commands.describe(
+    topic="What are you trying to do?",
+    details="Optional — artist, club, budget, vibe, etc.",
+    start_session="Yes = open a coach thread now (saved chat memory)",
+)
+@app_commands.choices(topic=START_TOPIC_CHOICES)
+async def start_cmd(
+    interaction: discord.Interaction,
+    topic: app_commands.Choice[str],
+    details: str | None = None,
+    start_session: bool = False,
+):
     await handle_interaction(interaction)
 
 

@@ -27,6 +27,7 @@ from app.services.ticket_service import (
     compare_ticket_prices,
 )
 from app.services.date_ideas_service import ask_about_first_dates, discover_first_date_ideas
+from app.services.command_guide import append_next_steps, build_find_goal, format_topic_guide
 from discord_bot.coach_handler import (
     handle_continue,
     handle_end_session,
@@ -80,6 +81,26 @@ async def send_chunks(interaction: discord.Interaction, content: str):
             await interaction.followup.send(content=chunk)
     except Exception as e:
         logger.error(f"Follow-up failed: {e}")
+
+
+async def send_with_guide(
+    interaction: discord.Interaction,
+    content: str,
+    *,
+    command: str,
+    user_text: str = "",
+    user_id: str = "",
+    topic: str | None = None,
+):
+    """Send response plus next-step command routing."""
+    enriched = append_next_steps(
+        content,
+        command=command,
+        user_text=user_text,
+        topic=topic,
+        user_id=user_id or None,
+    )
+    await send_chunks(interaction, enriched)
 
 async def run_advisor(user_id: str, username: str, question: str, extra_clubs_search: str = "") -> str:
     # Step 1: get history, then let router decide which tables + keywords to use
@@ -155,7 +176,9 @@ async def handle_ask(interaction: discord.Interaction, user_id: str, username: s
         return
 
     content = await run_advisor(user_id, username, question)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="ask", user_text=question, user_id=user_id
+    )
     logger.info(f"Handled /ask userId={user_id} username={username} questionLength={len(question)}")
 
 # /discover (replaces /roadmap)
@@ -172,7 +195,14 @@ async def handle_discover(interaction: discord.Interaction, user_id: str, userna
     )
 
     content = await run_advisor(user_id, username, question, extra_clubs_search=search_kw)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction,
+        content,
+        command="discover",
+        user_text=f"{major} {interests} {goals}",
+        user_id=user_id,
+        topic="campus_clubs",
+    )
     logger.info(f"Handled /discover userId={user_id} username={username} major={major}")
 
 # /search
@@ -188,7 +218,9 @@ async def handle_search(interaction: discord.Interaction, user_id: str, username
     )
 
     content = await run_advisor(user_id, username, question, extra_clubs_search=query)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="search", user_text=query, user_id=user_id, topic="campus_clubs"
+    )
     logger.info(f"Handled /search userId={user_id} username={username} query={query}")
 
 # /events (replaces /snipe)
@@ -206,7 +238,9 @@ async def handle_events(interaction: discord.Interaction, user_id: str, username
     )
 
     content = await run_advisor(user_id, username, question, extra_clubs_search=target)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="events", user_text=target, user_id=user_id, topic="campus_events"
+    )
     logger.info(f"Handled /events userId={user_id} username={username} target={target}")
 
 # /instagram
@@ -225,7 +259,14 @@ async def handle_instagram(interaction: discord.Interaction, user_id: str, usern
         )
         return
 
-    await send_chunks(interaction, format_instagram_message(club))
+    await send_with_guide(
+        interaction,
+        format_instagram_message(club),
+        command="instagram",
+        user_text=club_name,
+        user_id=user_id,
+        topic="campus_clubs",
+    )
     logger.info(f"Handled /instagram userId={user_id} club={club.get('name')}")
 
 # /compare_prices — cheapest tri-state tickets across marketplaces
@@ -237,7 +278,9 @@ async def handle_compare_prices(interaction: discord.Interaction, user_id: str, 
     category = _slash_choice_value(getattr(interaction.namespace, "category", None)) or "all"
     budget = getattr(interaction.namespace, "budget", None)
     content = await compare_ticket_prices(search=search.strip(), category=category, budget=budget)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="compare_prices", user_text=search, user_id=user_id, topic="tri_state"
+    )
     logger.info(f"Handled /compare_prices userId={user_id} search={search[:60]}")
 
 # /tickets — cheap tri-state tickets (sports, concerts, comedy, etc.)
@@ -247,7 +290,14 @@ async def handle_tickets(interaction: discord.Interaction, user_id: str, usernam
     budget = getattr(interaction.namespace, "budget", None)
 
     content = await find_cheap_tickets(category=category, search=search, budget=budget)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction,
+        content,
+        command="tickets",
+        user_text=search or category,
+        user_id=user_id,
+        topic="tri_state",
+    )
     logger.info(f"Handled /tickets userId={user_id} category={category} search={search}")
 
 # /explore_events — discover events from interests with buy links
@@ -287,7 +337,9 @@ async def handle_explore_events(interaction: discord.Interaction, user_id: str, 
         budget=budget,
         rutgers_events_context=combined_ctx,
     )
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="explore_events", user_text=interests, user_id=user_id, topic="tri_state"
+    )
     logger.info(f"Handled /explore_events userId={user_id} interests={interests[:80]}")
 
 # /ask_tickets — conversational tri-state Q&A (builds interests over time)
@@ -299,7 +351,9 @@ async def handle_ask_tickets(interaction: discord.Interaction, user_id: str, use
 
     history = await get_short_term_history(user_id)
     content = await ask_tri_state_question(question, history)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="ask_tickets", user_text=question, user_id=user_id, topic="tri_state"
+    )
     asyncio.create_task(save_memory_async(user_id, username, question, content, None))
     logger.info(f"Handled /ask_tickets userId={user_id} len={len(question)}")
 
@@ -310,7 +364,14 @@ async def handle_date_ideas(interaction: discord.Interaction, user_id: str, user
     budget = getattr(interaction.namespace, "budget", None)
 
     content = await discover_first_date_ideas(vibe=vibe, interests=interests, budget=budget)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction,
+        content,
+        command="date_ideas",
+        user_text=interests or vibe,
+        user_id=user_id,
+        topic="date_ideas",
+    )
     prompt = f"date_ideas vibe={vibe} interests={interests or ''}"
     asyncio.create_task(save_memory_async(user_id, username, prompt, content, None))
     logger.info(f"Handled /date_ideas userId={user_id} vibe={vibe}")
@@ -324,7 +385,9 @@ async def handle_ask_date(interaction: discord.Interaction, user_id: str, userna
 
     history = await get_short_term_history(user_id)
     content = await ask_about_first_dates(question, history)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="ask_date", user_text=question, user_id=user_id, topic="date_ideas"
+    )
     asyncio.create_task(save_memory_async(user_id, username, question, content, None))
     logger.info(f"Handled /ask_date userId={user_id} len={len(question)}")
 
@@ -340,10 +403,30 @@ async def handle_whats_new(interaction: discord.Interaction, user_id: str, usern
     if not tri:
         tri = live_events_cache.get_upcoming_tri_state()[:10]
     content = format_whats_new(campus, tri, days=7)
-    await send_chunks(interaction, content)
+    await send_with_guide(
+        interaction, content, command="whats_new", user_text="", user_id=user_id, topic="browse"
+    )
     logger.info(
         f"Handled /whats_new userId={user_id} campus={len(campus)} tri_state={len(tri)}"
     )
+
+# /start — route to commands or open a coach session
+async def handle_start(interaction: discord.Interaction, user_id: str, username: str):
+    topic = _slash_choice_value(getattr(interaction.namespace, "topic", None)) or "browse"
+    details = (getattr(interaction.namespace, "details", None) or "").strip()
+    start_session_flag = getattr(interaction.namespace, "start_session", False)
+    if hasattr(start_session_flag, "value"):
+        start_session_flag = bool(start_session_flag.value)
+
+    if topic == "coach" or start_session_flag:
+        goal = build_find_goal(topic, details)
+        await handle_find(interaction, user_id, username, goal)
+        logger.info("Handled /start → coach session userId=%s topic=%s", user_id, topic)
+        return
+
+    content = format_topic_guide(topic, details)
+    await send_chunks(interaction, content)
+    logger.info("Handled /start guide userId=%s topic=%s", user_id, topic)
 
 # /find — start multi-turn coach session (thread)
 async def handle_find_cmd(interaction: discord.Interaction, user_id: str, username: str):
@@ -376,6 +459,9 @@ async def handle_end_session_cmd(interaction: discord.Interaction, user_id: str)
 async def handle_help(interaction: discord.Interaction):
     help_text = (
         "**Rutgers S.E.E.R. Events Advisor — Commands**\n\n"
+        "**Getting started**\n"
+        "`/start [topic] [details]` — Tells you which commands to use, or **starts a coach session**.\n"
+        "  _Pick a topic (clubs, tickets, dates…) or set **Start session: Yes**._\n\n"
         "`/ask <question>` — Ask anything about clubs, events, or campus life.\n"
         "`/discover <major> <interests> <goals>` — Get personalized club recommendations.\n"
         "`/search <query>` — Look up a specific club or event.\n"
@@ -417,7 +503,7 @@ async def handle_interaction(interaction: discord.Interaction):
     valid_commands = [
         'ask', 'discover', 'search', 'events', 'instagram',
         'tickets', 'compare_prices', 'explore_events', 'ask_tickets',
-        'date_ideas', 'ask_date', 'whats_new',
+        'date_ideas', 'ask_date', 'whats_new', 'start',
         'find', 'continue', 'session', 'end_session', 'help',
     ]
     if command_name not in valid_commands:
@@ -479,6 +565,8 @@ async def handle_interaction(interaction: discord.Interaction):
             await handle_ask_date(interaction, user_id, username)
         elif command_name == 'whats_new':
             await handle_whats_new(interaction, user_id, username)
+        elif command_name == 'start':
+            await handle_start(interaction, user_id, username)
         elif command_name == 'find':
             await handle_find_cmd(interaction, user_id, username)
         elif command_name == 'continue':
