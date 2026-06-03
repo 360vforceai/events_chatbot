@@ -1,0 +1,25 @@
+# Optional Docker deploy on EC2 (install Docker + compose plugin first).
+# From repo root on the instance:
+#   cp bot/.env bot/.env   # secrets
+#   docker compose -f deploy/ec2/docker-compose.yml up -d --build
+
+services:
+  discord-bot:
+    build:
+      context: ../../bot
+      dockerfile: Dockerfile.bot
+    env_file: ../../bot/.env
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../../bot
+      dockerfile: Dockerfile
+    env_file: ../../bot/.env
+    environment:
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    profiles:
+      - api

@@ -1,0 +1,21 @@
+[Unit]
+Description=S.E.E.R. FastAPI (optional — web dashboard / scraper routes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=seer
+Group=seer
+WorkingDirectory=/opt/seer/bot
+EnvironmentFile=/opt/seer/bot/.env
+Environment=PORT=8000
+ExecStart=/opt/seer/bot/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=seer-api
+
+[Install]
+WantedBy=multi-user.target

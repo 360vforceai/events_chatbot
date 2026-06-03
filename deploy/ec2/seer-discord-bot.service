@@ -1,0 +1,21 @@
+[Unit]
+Description=S.E.E.R. Discord bot (events_chatbot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=seer
+Group=seer
+WorkingDirectory=/opt/seer/bot
+EnvironmentFile=/opt/seer/bot/.env
+ExecStart=/opt/seer/bot/.venv/bin/python discord_bot/bot.py
+Restart=always
+RestartSec=10
+# Discord gateway + background sync can be chatty in logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=seer-discord-bot
+
+[Install]
+WantedBy=multi-user.target

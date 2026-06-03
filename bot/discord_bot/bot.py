@@ -10,7 +10,7 @@ from discord import app_commands
 from app.config import settings
 import logging
 from discord_bot.interaction_handler import handle_interaction, purge_interactions
-from discord_bot.coach_handler import handle_coach_thread_message
+from discord_bot.coach_handler import handle_channel_message
 from discord_bot import club_cache, sync_tasks
 from app.services.ticket_service import EVENT_CATEGORIES
 from app.services.date_ideas_service import DATE_VIBES
@@ -92,12 +92,12 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-    if message.author.bot:
+    if message.author.bot or client.user is None:
         return
     try:
-        await handle_coach_thread_message(message)
+        await handle_channel_message(message, client.user)
     except Exception as e:
-        logger.error("Coach thread message error: %s", e)
+        logger.error("Channel message handler error: %s", e)
 
 # ---------------------------------------------------------------------------
 # Commands
