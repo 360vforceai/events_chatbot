@@ -16,8 +16,8 @@ def verify_admin_key(x_admin_key: str = Header(...)):
 def trigger_getinvolved_scraper(admin_key: str = Depends(verify_admin_key)):
     """Triggers the GetInvolved API scraper."""
     try:
-        count = getinvolved.run()
-        return {"status": "success", "message": f"GetInvolved scraper executed, saved {count} events"}
+        result = getinvolved.run()
+        return {"status": "success", "message": f"GetInvolved scraper executed", "saved": result}
     except Exception as e:
         logger.error(f"Scraper error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

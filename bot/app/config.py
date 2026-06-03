@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     discord_bot_token: str
     discord_guild_id: str
     openai_api_key: str
+    gemini_api_key: str = ""
     admin_api_key: str
     supabase_url: str | None = None
     supabase_key: str | None = None
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
         "discord_bot_token",
         "discord_guild_id",
         "openai_api_key",
+        "gemini_api_key",
         "admin_api_key",
         "supabase_url",
         "supabase_key",

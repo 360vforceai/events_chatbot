@@ -41,7 +41,7 @@ async def send_chunks(interaction: discord.Interaction, content: str):
     except Exception as e:
         logger.error(f"Follow-up failed: {e}")
 
-async def run_advisor(user_id: str, username: str, question: str) -> str:
+async def run_advisor(user_id: str, username: str, question: str, extra_clubs_search: str = "") -> str:
     # Step 1: get history, then let router decide which tables + keywords to use
     short_term_history = await get_short_term_history(user_id)
     decision = await get_router_decision(short_term_history, question)
@@ -55,12 +55,14 @@ async def run_advisor(user_id: str, username: str, question: str) -> str:
         if "community_memory" in tables:
             return await search_long_term_memories(keywords)
         return {"memories": [], "embedding": None}
-        
+
     async def fetch_clubs():
-        if "clubs" in tables:
-            return await search_clubs(keywords)
+        # Always search clubs if an explicit club name was provided (e.g. from /events autocomplete)
+        search_term = extra_clubs_search or (keywords if "clubs" in tables else "")
+        if search_term:
+            return await search_clubs(search_term)
         return []
-        
+
     async def fetch_events():
         if "events" in tables:
             return await search_events(keywords)
@@ -156,10 +158,12 @@ async def handle_events(interaction: discord.Interaction, user_id: str, username
 
     question = (
         f"Check upcoming events for \"{target}\". "
-        f"List all upcoming events with their dates, times, locations, and if there is free food. "
+        f"List all upcoming events with their dates, times, and locations. "
+        f"If no events are listed for \"{target}\" specifically, say so clearly and "
+        f"provide the club's getINVOLVED page link from the CLUBS context so the user can check directly."
     )
 
-    content = await run_advisor(user_id, username, question)
+    content = await run_advisor(user_id, username, question, extra_clubs_search=target)
     await send_chunks(interaction, content)
     logger.info(f"Handled /events userId={user_id} username={username} target={target}")
 
