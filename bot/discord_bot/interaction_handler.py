@@ -26,6 +26,12 @@ from app.services.ticket_service import (
     ask_tri_state_question,
 )
 from app.services.date_ideas_service import ask_about_first_dates, discover_first_date_ideas
+from discord_bot.coach_handler import (
+    handle_continue,
+    handle_end_session,
+    handle_find,
+    handle_session_status,
+)
 
 logger = logging.getLogger("discord_bot")
 
@@ -326,6 +332,33 @@ async def handle_whats_new(interaction: discord.Interaction, user_id: str, usern
         f"Handled /whats_new userId={user_id} campus={len(campus)} tri_state={len(tri)}"
     )
 
+# /find — start multi-turn coach session (thread)
+async def handle_find_cmd(interaction: discord.Interaction, user_id: str, username: str):
+    goal = getattr(interaction.namespace, "goal", None)
+    if not goal or not goal.strip():
+        await interaction.followup.send(
+            "Tell me what you're trying to find — e.g. `one chill concert under $50` or `a CS club with hackathons`.",
+            ephemeral=True,
+        )
+        return
+    await handle_find(interaction, user_id, username, goal.strip())
+
+# /continue — follow up in active coach session
+async def handle_continue_cmd(interaction: discord.Interaction, user_id: str):
+    message = getattr(interaction.namespace, "message", None)
+    if not message or not message.strip():
+        await interaction.followup.send("Add a follow-up message to continue your session.", ephemeral=True)
+        return
+    await handle_continue(interaction, user_id, message.strip())
+
+# /session — coach session status
+async def handle_session_cmd(interaction: discord.Interaction, user_id: str):
+    await handle_session_status(interaction, user_id)
+
+# /end_session
+async def handle_end_session_cmd(interaction: discord.Interaction, user_id: str):
+    await handle_end_session(interaction, user_id)
+
 # /help
 async def handle_help(interaction: discord.Interaction):
     help_text = (
@@ -343,6 +376,11 @@ async def handle_help(interaction: discord.Interaction):
         "**Date Ideas**\n"
         "`/date_ideas <vibe> [interests] [budget]` — Curated date ideas with Maps/Yelp/OpenTable links.\n"
         "`/ask_date <question>` — Ask about plans, budget, vibe, or what to do.\n\n"
+        "**Coach sessions (multi-turn — like a chat thread)**\n"
+        "`/find <goal>` — Start a session; the agent asks follow-ups and narrows to **one pick**.\n"
+        "  _Reply in the thread it creates, or use `/continue <message>`._\n"
+        "`/session` — See your active session.\n"
+        "`/end_session` — Close the session.\n\n"
         "`/help` — Show this message.\n\n"
         "Campus events refresh automatically from getINVOLVED (live API + background sync).\n"
         "Tri-state: SeatGeek, Gametime, StubHub, etc. Dates: Google Maps, Yelp, OpenTable, Eventbrite."
@@ -364,7 +402,8 @@ async def handle_interaction(interaction: discord.Interaction):
     valid_commands = [
         'ask', 'discover', 'search', 'events', 'instagram',
         'tickets', 'explore_events', 'ask_tickets',
-        'date_ideas', 'ask_date', 'whats_new', 'help',
+        'date_ideas', 'ask_date', 'whats_new',
+        'find', 'continue', 'session', 'end_session', 'help',
     ]
     if command_name not in valid_commands:
         return
@@ -423,6 +462,14 @@ async def handle_interaction(interaction: discord.Interaction):
             await handle_ask_date(interaction, user_id, username)
         elif command_name == 'whats_new':
             await handle_whats_new(interaction, user_id, username)
+        elif command_name == 'find':
+            await handle_find_cmd(interaction, user_id, username)
+        elif command_name == 'continue':
+            await handle_continue_cmd(interaction, user_id)
+        elif command_name == 'session':
+            await handle_session_cmd(interaction, user_id)
+        elif command_name == 'end_session':
+            await handle_end_session_cmd(interaction, user_id)
         elif command_name == 'help':
             await handle_help(interaction)
     except Exception as e:

@@ -280,3 +280,86 @@ async def get_date_planning_response(
         temperature=0.5,
     )
     return json.loads(response.choices[0].message.content)
+
+
+async def get_coach_agent_response(
+    *,
+    goal: str,
+    domain: str,
+    history: list,
+    user_message: str,
+    context: dict,
+) -> dict:
+    """
+    Multi-turn agent that narrows a student to ONE recommendation (club, event, show, or date plan).
+    """
+    client, _, smart_model = _get_client()
+    domain_guide = {
+        "campus": "Focus on Rutgers clubs and getINVOLVED events. Prefer free/cheap campus options when relevant.",
+        "tri_state": "Focus on concerts, sports, comedy, theater reachable from New Brunswick. Include ticket search tips.",
+        "date": "Focus on low-pressure date ideas near Rutgers — coffee, walks, cheap fun, transit-friendly.",
+        "general": "Blend campus and tri-state only as needed to satisfy the goal.",
+    }.get(domain, "")
+
+    system_prompt = f"""
+    You are S.E.E.R.'s personal coach for Rutgers students — like a patient advisor in a chat thread.
+    The student has ONE goal they want help with. Your job is NOT to dump a list — help them decide.
+
+    **Goal:** {goal}
+    **Domain:** {domain} — {domain_guide}
+
+    **How to behave (agent ↔ client):**
+    1. Early turns: reflect what you heard, ask ONE focused clarifying question (budget, timing, vibe, distance).
+    2. Middle turns: offer at most 2 short alternatives, explain tradeoffs, ask what matters most.
+    3. When you have enough (usually by turn 2-4, or when they say "just pick one"): status = resolved with ONE top_pick.
+    4. Never invent clubs/events not in context. If context is thin, say so and still give your best honest pick + how to verify.
+    5. Keep replies concise (2-4 short paragraphs max before pick). Be warm, direct, student-friendly.
+
+    **Context freshness:** {context.get("freshness", "unknown")}
+
+    CLUBS:
+    {context.get("clubs_context") or "None"}
+
+    CAMPUS EVENTS:
+    {context.get("events_context") or "None"}
+
+    TRI-STATE LIVE:
+    {context.get("tri_state_context") or "None"}
+
+    Respond ONLY JSON:
+    {{
+      "reply": "your message to the student",
+      "understanding": "one sentence summary of their preferences so far",
+      "status": "active or resolved",
+      "follow_up_prompt": "one short question if status is active, else empty string",
+      "alternatives": [
+        {{"title": "short name", "why": "one line tradeoff"}}
+      ],
+      "top_pick": null or {{
+        "title": "The ONE thing they should do",
+        "why": "2-3 sentences why this fits their stated preferences",
+        "when": "timing guidance",
+        "where": "location/venue",
+        "cost_tip": "budget note",
+        "search_query": "phrase for ticket/maps search if relevant",
+        "direct_link": "RSVP or ticket URL from context if available, else empty",
+        "link_label": "RSVP or Tickets or Maps",
+        "next_steps": ["concrete step 1", "step 2"]
+      }}
+    }}
+
+    Set status to resolved when you deliver top_pick. Include 0-2 alternatives only while status is active.
+    """
+
+    messages = (
+        [{"role": "system", "content": system_prompt}]
+        + history
+        + [{"role": "user", "content": user_message}]
+    )
+    response = await client.chat.completions.create(
+        model=smart_model,
+        response_format={"type": "json_object"},
+        messages=messages,
+        temperature=0.45,
+    )
+    return json.loads(response.choices[0].message.content)

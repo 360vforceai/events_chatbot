@@ -10,6 +10,7 @@ from discord import app_commands
 from app.config import settings
 import logging
 from discord_bot.interaction_handler import handle_interaction, purge_interactions
+from discord_bot.coach_handler import handle_coach_thread_message
 from discord_bot import club_cache, sync_tasks
 from app.services.ticket_service import EVENT_CATEGORIES
 from app.services.date_ideas_service import DATE_VIBES
@@ -51,6 +52,7 @@ class SeerBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.guilds = True
+        intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
@@ -77,6 +79,16 @@ client = SeerBot()
 async def on_ready():
     logger.info(f"Discord bot ready. Logged in as {client.user.name}")
     await sync_tasks.run_initial_sync()
+
+
+@client.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    try:
+        await handle_coach_thread_message(message)
+    except Exception as e:
+        logger.error("Coach thread message error: %s", e)
 
 # ---------------------------------------------------------------------------
 # Commands
@@ -193,6 +205,36 @@ async def whats_new_cmd(interaction: discord.Interaction):
 
 @client.tree.command(name="help", description="Show all available commands")
 async def help_cmd(interaction: discord.Interaction):
+    await handle_interaction(interaction)
+
+
+@client.tree.command(
+    name="find",
+    description="Start a coach session — the agent helps you narrow down to one event or plan",
+)
+@app_commands.describe(
+    goal="What you're trying to find — e.g. one cheap concert this month, a CS club to join",
+)
+async def find_cmd(interaction: discord.Interaction, goal: str):
+    await handle_interaction(interaction)
+
+
+@client.tree.command(
+    name="continue",
+    description="Continue your active coach session with a follow-up message",
+)
+@app_commands.describe(message="Elaborate, answer a question, or say 'just pick one for me'")
+async def continue_cmd(interaction: discord.Interaction, message: str):
+    await handle_interaction(interaction)
+
+
+@client.tree.command(name="session", description="Show your active coach session status")
+async def session_cmd(interaction: discord.Interaction):
+    await handle_interaction(interaction)
+
+
+@client.tree.command(name="end_session", description="End your active coach session")
+async def end_session_cmd(interaction: discord.Interaction):
     await handle_interaction(interaction)
 
 if __name__ == "__main__":
