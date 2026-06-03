@@ -9,7 +9,7 @@ AI-powered Discord agent for Rutgers club and event discovery.
 | Who | Runs software? | Needs secrets? |
 |-----|----------------|----------------|
 | Students / Discord users | No | No |
-| You (deploy once) | Yes — hosted worker | Yes — set once in Railway/Render/etc. |
+| You (deploy once) | Yes — hosted worker | Yes — set once in Render/etc. |
 | Developers (local testing) | Optional — their machine | Yes — personal `bot/.env` only |
 
 Secrets (`DISCORD_BOT_TOKEN`, `OPENAI_API_KEY`, Supabase keys, etc.) are **server-side only**. They live in your hosting provider’s environment variables, not in the repo and not on end-user devices.
@@ -25,31 +25,30 @@ flowchart LR
   API --> Supabase
 ```
 
-## Production deployment (recommended)
+## Production deployment (Render)
 
-### 1. Discord bot (required for everyone to use SEER)
+### 1. Discord bot (required)
 
-Deploy **`bot/`** as an **always-on worker** (not serverless — the bot must stay connected to Discord).
+The bot must run as an **always-on Background Worker** (not serverless).
 
-**Railway (simplest)**
+1. Go to [render.com](https://render.com) → **New** → **Blueprint** → connect this GitHub repo.
+2. Render reads root **`render.yaml`**, which defines:
+   - **`seer-discord-bot`** (worker) — `python discord_bot/bot.py` in `bot/`
+   - **`seer-api`** (optional web service) — FastAPI on `$PORT` with `/health`
+3. When prompted, enter env vars from `.env.example` (group **`seer-env`**). You only set them once; both services share the group.
+4. Deploy. Keep **`seer-discord-bot`** on at least a **Starter** plan so the worker does not sleep.
 
-1. Create a project at [railway.app](https://railway.app) and connect this repo.
-2. Add a service with root directory **`bot`** (uses `bot/railway.toml`).
-3. In **Variables**, paste the same keys from `.env.example` (real values, not placeholders).
-4. Deploy. Railway keeps `python discord_bot/bot.py` running.
+**Manual setup (without Blueprint):** New → Background Worker → root directory **`bot`**, build `pip install -r requirements.txt`, start `python discord_bot/bot.py`, add the same env vars.
 
-**Render**
+**Invite the bot** (once): Discord Developer Portal → OAuth2 → scopes `bot` + `applications.commands` → invite to your server. `DISCORD_GUILD_ID` must be that server’s ID.
 
-1. Use `render.yaml` or create a **Background Worker** with build command `pip install -r requirements.txt` and start command `python discord_bot/bot.py` in `bot/`.
-2. Set environment variables in the Render dashboard.
-
-**Invite the bot to your server** (once): Discord Developer Portal → OAuth2 → URL Generator → scopes `bot` + `applications.commands` → invite to your Rutgers server. `DISCORD_GUILD_ID` must match that server’s ID.
+Docker alternative: `bot/Dockerfile.bot` runs the same bot process if you prefer `runtime: docker` in `render.yaml`.
 
 ### 2. Web dashboard (optional)
 
 Deploy **`web/`** on [Vercel](https://vercel.com):
 
-- Set `NEXT_PUBLIC_API_URL` to your deployed API URL (e.g. `https://seer-api.onrender.com`).
+- Set `NEXT_PUBLIC_API_URL` to your Render API URL (e.g. `https://seer-api.onrender.com` from the blueprint).
 - No OpenAI or Discord tokens are needed in the web app.
 
 ### 3. API (optional — only if you use the web UI or scraper routes)
@@ -59,7 +58,7 @@ Deploy **`bot/`** API with `uvicorn app.main:app --host 0.0.0.0 --port 8000` (se
 ## Secrets: set once, share with the team safely
 
 1. **Never commit** `bot/.env` (already in `.gitignore`).
-2. **Production**: enter variables only in Railway / Render / Vercel project settings.
+2. **Production**: enter variables only in Render (env group `seer-env`) / Vercel project settings.
 3. **Developers**: copy `.env.example` → `bot/.env` for local runs, or share a team vault (1Password, Bitwarden) — not Slack or email.
 4. **CI**: GitHub Actions already uses dummy values in `.github/workflows/ci.yml`; do not put real keys in workflow files unless using encrypted secrets for deploy steps.
 

@@ -1,43 +1,46 @@
-# Optional Render Blueprint — deploy the Discord bot as an always-on worker.
-# Set env vars in the Render dashboard (never commit real values).
-# Web app: deploy `web/` separately on Vercel with NEXT_PUBLIC_API_URL pointing at the API service.
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# 1. Connect this repo on Render → New → Blueprint
+# 2. Fill in env vars when prompted (sync: false) or in the dashboard
+# 3. Deploy seer-discord-bot (required). seer-api is optional (web UI / scraper).
+
+envVarGroups:
+  - name: seer-env
+    envVars:
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
 
 services:
-  - type: web
-    name: seer-api
-    runtime: docker
-    dockerfilePath: ./bot/Dockerfile
-    dockerContext: ./bot
-    plan: starter
-    envVars:
-      - key: DISCORD_BOT_TOKEN
-        sync: false
-      - key: DISCORD_GUILD_ID
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ADMIN_API_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
-        sync: false
-
+  # Required: always-on Discord bot (same role as bot/railway.toml startCommand)
   - type: worker
     name: seer-discord-bot
-    runtime: docker
-    dockerfilePath: ./bot/Dockerfile.bot
-    dockerContext: ./bot
+    runtime: python
     plan: starter
+    rootDir: bot
+    buildCommand: pip install -r requirements.txt
+    startCommand: python discord_bot/bot.py
+    autoDeploy: true
     envVars:
-      - key: DISCORD_BOT_TOKEN
-        sync: false
-      - key: DISCORD_GUILD_ID
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ADMIN_API_KEY
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
+      - fromGroup: seer-env
+
+  # Optional: FastAPI for web dashboard and scraper routes
+  - type: web
+    name: seer-api
+    runtime: python
+    plan: starter
+    rootDir: bot
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - fromGroup: seer-env
