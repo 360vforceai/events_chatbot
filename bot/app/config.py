@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_key: str | None = None
     scrape_interval_hours: int = 6
+    data_sync_interval_minutes: int = 30
+    live_events_cache_minutes: int = 10
+    discord_updates_channel_id: str = ""
+    discord_announce_new_events: bool = True
 
     # Legacy — unused by Supabase-backed code; kept for backward-compatible .env files
     aws_access_key_id: str = "local"

@@ -42,6 +42,18 @@ The bot must run as an **always-on Background Worker** (not serverless).
 
 **Invite the bot** (once): Discord Developer Portal → OAuth2 → scopes `bot` + `applications.commands` → invite to your server. `DISCORD_GUILD_ID` must be that server’s ID.
 
+**Discord commands:** `/ask`, `/discover`, `/search`, `/events`, `/instagram`, `/tickets`, `/explore_events`, `/ask_tickets`, `/date_ideas`, `/ask_date`, `/help`. Restart the bot after deploy to register slash commands.
+
+**Tri-state tickets:** `/tickets`, `/explore_events`, and `/ask_tickets` (conversational) include buy links (SeatGeek, Gametime, StubHub, etc.) for NY / NJ / PA.
+
+**Date Ideas:** `/date_ideas` and `/ask_date` suggest plans near Rutgers with Google Maps, Yelp, OpenTable, and Eventbrite links.
+
+**Real-time data:** The Discord bot syncs getINVOLVED to Supabase every `DATA_SYNC_INTERVAL_MINUTES` (default 30) and refreshes a live event cache every `LIVE_EVENTS_CACHE_MINUTES` (default 10). Event commands pull from the live API first.
+
+**Optional event announcements:** Set `DISCORD_UPDATES_CHANNEL_ID` in `bot/.env` to a channel ID; the bot will post embeds when new events appear (next 14 days).
+
+**Manual sync:** `python -m app.scrapers.getinvolved` from `bot/` or `POST /scrape/trigger/getinvolved` with admin key.
+
 Docker alternative: `bot/Dockerfile.bot` runs the same bot process if you prefer `runtime: docker` in `render.yaml`.
 
 ### 2. Web dashboard (optional)

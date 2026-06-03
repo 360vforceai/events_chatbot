@@ -1,5 +1,4 @@
 import sys
-import time
 from pathlib import Path
 
 # Allow `python discord_bot/bot.py` from the bot/ directory (README workflow).
@@ -11,38 +10,29 @@ from discord import app_commands
 from app.config import settings
 import logging
 from discord_bot.interaction_handler import handle_interaction, purge_interactions
+from discord_bot import club_cache, sync_tasks
+from app.services.ticket_service import EVENT_CATEGORIES
+from app.services.date_ideas_service import DATE_VIBES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("discord_bot")
 
-# ---------------------------------------------------------------------------
-# Club name cache — refreshed every 5 minutes so autocomplete stays fast
-# ---------------------------------------------------------------------------
-_club_cache: list[str] = []
-_club_cache_ts: float = 0
-_CACHE_TTL = 300  # seconds
+TICKET_CATEGORY_CHOICES = [
+    app_commands.Choice(name=label, value=key)
+    for key, label in EVENT_CATEGORIES.items()
+]
 
-async def _get_club_names() -> list[str]:
-    global _club_cache, _club_cache_ts
-    if time.time() - _club_cache_ts < _CACHE_TTL and _club_cache:
-        return _club_cache
-    try:
-        from app.db.client import get_supabase
-        sb = get_supabase()
-        rows = sb.table("clubs").select("name").execute().data
-        _club_cache = sorted(r["name"].strip() for r in rows if r.get("name"))
-        _club_cache_ts = time.time()
-        logger.info(f"Club autocomplete cache refreshed ({len(_club_cache)} clubs)")
-    except Exception as e:
-        logger.error(f"Failed to refresh club cache: {e}")
-    return _club_cache
+DATE_VIBE_CHOICES = [
+    app_commands.Choice(name=label, value=key)
+    for key, label in DATE_VIBES.items()
+]
 
 
 async def club_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> list[app_commands.Choice[str]]:
-    names = await _get_club_names()
+    names = await club_cache.get_club_names()
     current_lower = current.lower()
     matches = [n for n in names if current_lower in n.lower()]
     # Put names that START with the typed text first
@@ -65,8 +55,8 @@ class SeerBot(commands.Bot):
 
     async def setup_hook(self):
         purge_interactions.start()
-        # Pre-warm the club cache on startup
-        await _get_club_names()
+        sync_tasks.start_background_tasks(self)
+        await club_cache.get_club_names()
         guild_id = int(settings.discord_guild_id)
         guild = discord.Object(id=guild_id)
         self.tree.copy_global_to(guild=guild)
@@ -86,6 +76,7 @@ client = SeerBot()
 @client.event
 async def on_ready():
     logger.info(f"Discord bot ready. Logged in as {client.user.name}")
+    await sync_tasks.run_initial_sync()
 
 # ---------------------------------------------------------------------------
 # Commands
@@ -111,6 +102,93 @@ async def search_cmd(interaction: discord.Interaction, query: str):
 @app_commands.describe(target="Campus or club name")
 @app_commands.autocomplete(target=club_autocomplete)
 async def events_cmd(interaction: discord.Interaction, target: str):
+    await handle_interaction(interaction)
+
+@client.tree.command(name="instagram", description="Get a club's Instagram and links")
+@app_commands.describe(club="Club name")
+@app_commands.autocomplete(club=club_autocomplete)
+async def instagram_cmd(interaction: discord.Interaction, club: str):
+    await handle_interaction(interaction)
+
+@client.tree.command(
+    name="tickets",
+    description="Find cheap tri-state tickets (sports, concerts, comedy, theater)",
+)
+@app_commands.describe(
+    category="Type of event",
+    search="Team, artist, or keyword (optional)",
+    budget="Budget hint, e.g. under $40 (optional)",
+)
+@app_commands.choices(category=TICKET_CATEGORY_CHOICES)
+async def tickets_cmd(
+    interaction: discord.Interaction,
+    category: app_commands.Choice[str],
+    search: str | None = None,
+    budget: str | None = None,
+):
+    await handle_interaction(interaction)
+
+@client.tree.command(
+    name="explore_events",
+    description="Discover tri-state events from your interests with ticket links",
+)
+@app_commands.describe(
+    interests="What you're into — artists, teams, genres, vibes",
+    category="Optional filter: sports, concert, comedy, etc.",
+    budget="Optional budget cap, e.g. under $50",
+)
+@app_commands.choices(category=TICKET_CATEGORY_CHOICES)
+async def explore_events_cmd(
+    interaction: discord.Interaction,
+    interests: str,
+    category: app_commands.Choice[str] | None = None,
+    budget: str | None = None,
+):
+    await handle_interaction(interaction)
+
+@client.tree.command(
+    name="ask_tickets",
+    description="Ask about tri-state shows and tickets — explore and develop your interests",
+)
+@app_commands.describe(
+    question="e.g. I want to get into jazz concerts cheaply — where do I start?",
+)
+async def ask_tickets_cmd(interaction: discord.Interaction, question: str):
+    await handle_interaction(interaction)
+
+@client.tree.command(
+    name="date_ideas",
+    description="Discover date ideas near Rutgers with planning links",
+)
+@app_commands.describe(
+    vibe="Date vibe",
+    interests="Optional — coffee, museums, live music, etc.",
+    budget="Optional — e.g. under $30 each",
+)
+@app_commands.choices(vibe=DATE_VIBE_CHOICES)
+async def date_ideas_cmd(
+    interaction: discord.Interaction,
+    vibe: app_commands.Choice[str],
+    interests: str | None = None,
+    budget: str | None = None,
+):
+    await handle_interaction(interaction)
+
+@client.tree.command(
+    name="ask_date",
+    description="Ask anything about date ideas near Rutgers",
+)
+@app_commands.describe(
+    question="e.g. What's a low-pressure date idea if we both love food?",
+)
+async def ask_date_cmd(interaction: discord.Interaction, question: str):
+    await handle_interaction(interaction)
+
+@client.tree.command(
+    name="whats_new",
+    description="Upcoming Rutgers events in the next 7 days (live from getINVOLVED)",
+)
+async def whats_new_cmd(interaction: discord.Interaction):
     await handle_interaction(interaction)
 
 @client.tree.command(name="help", description="Show all available commands")
